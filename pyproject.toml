@@ -1,0 +1,51 @@
+[tool.poetry]
+name = "cz-elections-live"
+version = "0.1.0"
+description = "Live dashboard + Monte Carlo forecast for CZ Parliamentary Elections 2025"
+authors = ["You <you@example.com>"]
+readme = "README.md"
+packages = [{ include = "cz_elections_live", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+streamlit = "1.37.0"
+pandas = "^2.2.0"
+numpy = "^1.26.0"
+pyyaml = "^6.0"
+lxml = "^5.2.0"
+python-dotenv = "^1.0.0"
+requests = "^2.32.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+ruff = "^0.6.9"
+black = "^24.8.0"
+mypy = "^1.10.0"
+types-PyYAML = "^6.0.12.20240808"
+types-requests = "^2.32.0.20240914"
+
+[tool.poetry.scripts]
+cz-live = "cz_elections_live.streamlit_app:main_cli"
+
+[tool.black]
+line-length = 100
+target-version = ["py311","py312"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E","F","I","UP","B"]
+ignore = []
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+disallow_untyped_defs = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

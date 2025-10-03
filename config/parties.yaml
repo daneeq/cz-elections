@@ -1,0 +1,9 @@
+ANO: { name: "ANO", coalition: false }
+SPD: { name: "SPD", coalition: false }
+SPOLU: { name: "SPOLU (ODS+KDU-ČSL+TOP09)", coalition: true, members: ["ODS","KDUCSL","TOP09"] }
+PIR: { name: "Pirates", coalition: false }
+STAN: { name: "STAN", coalition: false }
+CSSD: { name: "ČSSD", coalition: false }
+ODS: { name: "ODS", coalition: false }
+KDUCSL: { name: "KDU-ČSL", coalition: false }
+TOP09: { name: "TOP 09", coalition: false }

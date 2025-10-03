@@ -1,0 +1,13 @@
+coalitions:
+  - name: "Gov bloc (SPOLU + Pirates + STAN)"
+    parties: ["SPOLU","PIR","STAN"]
+  - name: "Opposition core (ANO + SPD)"
+    parties: ["ANO","SPD"]
+  - name: "SPOLU + Pirates"
+    parties: ["SPOLU","PIR"]
+  - name: "SPOLU + STAN"
+    parties: ["SPOLU","STAN"]
+  - name: "ANO + ČSSD"
+    parties: ["ANO","CSSD"]
+  - name: "Grand coalition (SPOLU + ANO)"
+    parties: ["SPOLU","ANO"]
