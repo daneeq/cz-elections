@@ -15,6 +15,7 @@ pyyaml = "^6.0"
 lxml = "^5.2.0"
 python-dotenv = "^1.0.0"
 requests = "^2.32.0"
+plotly = "^5.17.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
