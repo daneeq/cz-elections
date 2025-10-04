@@ -93,6 +93,11 @@ def main():
 
     df_partial = get_partial()
 
+    # Ensure no duplicate party codes (safety check)
+    if not df_partial.empty and "party_code" in df_partial.columns:
+        df_partial = df_partial.drop_duplicates(subset=["party_code"], keep="first")
+        df_partial = df_partial.reset_index(drop=True)
+
     # Filter to selected parties (if filter enabled)
     if selected_parties is not None:
         df_partial = df_partial[df_partial["party_code"].isin(selected_parties)]
