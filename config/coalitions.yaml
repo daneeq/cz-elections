@@ -1,13 +1,22 @@
 coalitions:
-  - name: "Gov bloc (SPOLU + Pirates + STAN)"
-    parties: ["SPOLU","PIR","STAN"]
-  - name: "Opposition core (ANO + SPD)"
-    parties: ["ANO","SPD"]
-  - name: "SPOLU + Pirates"
-    parties: ["SPOLU","PIR"]
+  # 2025 realistic government scenarios (using numeric party codes from XML)
+  - name: "Current Gov (SPOLU+Pirates+STAN)"
+    parties: ["11","16","23"]
   - name: "SPOLU + STAN"
-    parties: ["SPOLU","STAN"]
-  - name: "ANO + ČSSD"
-    parties: ["ANO","CSSD"]
-  - name: "Grand coalition (SPOLU + ANO)"
-    parties: ["SPOLU","ANO"]
+    parties: ["11","23"]
+  - name: "SPOLU + Pirates"
+    parties: ["11","16"]
+
+  # Opposition scenarios
+  - name: "ANO + SPD"
+    parties: ["22","6"]
+  - name: "ANO + Stačilo"
+    parties: ["22","25"]
+
+  # Grand coalition
+  - name: "Grand Coalition (SPOLU+ANO)"
+    parties: ["11","22"]
+
+  # All pro-democratic parties
+  - name: "Democratic bloc (all excl ANO+SPD+Stačilo)"
+    parties: ["11","16","23","20"]

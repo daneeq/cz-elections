@@ -91,6 +91,9 @@ def main():
     with open("config/coalitions.yaml") as f:
         COALS = yaml.safe_load(f)["coalitions"]
 
+    with open("config/parties.yaml") as f:
+        PARTIES_CONFIG = yaml.safe_load(f)
+
     # Show simulation info for incremental mode
     if DATA_MODE == "ps2021_incremental" and "simulator" in st.session_state:
         progress_info = st.session_state.simulator.get_progress_info()
@@ -132,24 +135,90 @@ def main():
     progress_bar.empty()
     status_text.empty()
 
-    # Calculate individual party seat projections
+    # Calculate individual party seat projections and threshold probabilities
     party_seats = {}
+    threshold_probs = {}
     for i, party_code in enumerate(sim_result.parties):
         party_seats[party_code] = sim_result.seats[:, i].mean()
+        # Calculate probability of crossing 5% threshold (getting any seats)
+        threshold_probs[party_code] = float((sim_result.seats[:, i] > 0).mean())
     
-    # Add projected seats to partial data
+    # Add projected seats and threshold probabilities to partial data
     df_partial_with_seats = df_partial.copy()
     df_partial_with_seats["projected_seats"] = df_partial_with_seats["party_code"].map(party_seats).fillna(0).round(1)
-    
+    df_partial_with_seats["threshold_prob"] = df_partial_with_seats["party_code"].map(threshold_probs).fillna(0) * 100
+
     # Display parties table with projected seats
     st.subheader("Partial totals & Projected seats")
-    display_df = df_partial_with_seats[["party_code", "party_name", "votes_reported", "pct_reported", "projected_seats"]].copy()
-    display_df.columns = ["Party", "Name", "Votes", "Pct", "Proj. Seats"]
+    display_df = df_partial_with_seats[["party_code", "party_name", "votes_reported", "pct_reported", "projected_seats", "threshold_prob"]].copy()
+    display_df.columns = ["Party", "Name", "Votes", "Pct", "Proj. Seats", "P(>5%)"]
+    display_df["P(>5%)"] = display_df["P(>5%)"].apply(lambda x: f"{x:.1f}%")
     st.dataframe(
-        display_df.sort_values("Votes", ascending=False), 
+        display_df.sort_values("Votes", ascending=False),
         use_container_width=True,
         hide_index=True
     )
+
+    # Show parties near threshold
+    near_threshold = df_partial_with_seats[
+        (df_partial_with_seats["pct_reported"] >= 3) &
+        (df_partial_with_seats["pct_reported"] <= 7)
+    ].sort_values("pct_reported", ascending=False)
+
+    if not near_threshold.empty:
+        st.info("⚠️ **Parties near 5% threshold:** " +
+                ", ".join([f"{row['party_name']} ({row['pct_reported']:.1f}%, {row['threshold_prob']:.0f}% chance)"
+                          for _, row in near_threshold.iterrows()]))
+
+    # Visualizations
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Projected Seat Distribution**")
+        # Get colors for parties
+        colors_map = {party: PARTIES_CONFIG.get(party, {}).get("color", "#808080")
+                     for party in df_partial_with_seats["party_code"]}
+        colors_list = [colors_map.get(party, "#808080") for party in display_df["Party"]]
+
+        fig_seats = go.Figure(data=[go.Bar(
+            x=display_df["Proj. Seats"],
+            y=display_df["Name"],
+            orientation='h',
+            marker=dict(color=colors_list),
+            text=display_df["Proj. Seats"],
+            textposition='outside'
+        )])
+        fig_seats.update_layout(
+            height=400,
+            xaxis_title="Projected Seats",
+            yaxis_title="",
+            showlegend=False,
+            xaxis=dict(range=[0, 100])
+        )
+        fig_seats.add_vline(x=101, line_dash="dash", line_color="red",
+                           annotation_text="Majority (101)", annotation_position="top")
+        st.plotly_chart(fig_seats, use_container_width=True)
+
+    with col2:
+        st.markdown("**Vote Share Distribution**")
+        fig_votes = go.Figure(data=[go.Bar(
+            x=display_df["Pct"],
+            y=display_df["Name"],
+            orientation='h',
+            marker=dict(color=colors_list),
+            text=[f"{p:.1f}%" for p in display_df["Pct"]],
+            textposition='outside'
+        )])
+        fig_votes.update_layout(
+            height=400,
+            xaxis_title="Vote Share (%)",
+            yaxis_title="",
+            showlegend=False,
+            xaxis=dict(range=[0, 40])
+        )
+        fig_votes.add_vline(x=5, line_dash="dash", line_color="orange",
+                           annotation_text="5% threshold", annotation_position="top")
+        st.plotly_chart(fig_votes, use_container_width=True)
     
     # Calculate coalition odds
     rows = []
@@ -264,8 +333,8 @@ def main():
                 st.rerun()
 
     st.caption("Mode: " + DATA_MODE)
-    
-    # Auto-refresh for incremental mode
+
+    # Auto-refresh for incremental and live modes
     if DATA_MODE == "ps2021_incremental" and "simulator" in st.session_state:
         progress_info = st.session_state.simulator.get_progress_info()
         if not progress_info['is_complete']:
@@ -273,18 +342,25 @@ def main():
             base_interval = 3.0  # Base 3 seconds
             sim_factor = max(1.0, sims / 10000)  # Longer wait for more simulations
             calc_factor = max(1.0, calc_time * 0.5)  # Factor in calculation time
-            
+
             refresh_interval = base_interval * sim_factor * calc_factor
             refresh_interval = min(refresh_interval, 10.0)  # Cap at 10 seconds
-            
+
             st.caption(f"🔄 Auto-refreshing every {refresh_interval:.1f} seconds (based on {sims:,} sims, {calc_time:.1f}s calc time)...")
-            
+
             # Store timing info for next iteration
             if "last_calc_time" not in st.session_state:
                 st.session_state.last_calc_time = calc_time
-            
+
             time.sleep(refresh_interval)
             st.rerun()
+
+    elif DATA_MODE == "ps2025_live":
+        # Auto-refresh for live election data (60 seconds default, aligned with feed updates)
+        refresh_interval = max(60.0, calc_time * 2)  # At least 60s, more if calculation is slow
+        st.caption(f"🔄 Auto-refreshing every {refresh_interval:.0f} seconds for live results...")
+        time.sleep(refresh_interval)
+        st.rerun()
 
 
 def main_cli():

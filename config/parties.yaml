@@ -1,9 +1,12 @@
-ANO: { name: "ANO", coalition: false }
-SPD: { name: "SPD", coalition: false }
-SPOLU: { name: "SPOLU (ODS+KDU-ČSL+TOP09)", coalition: true, members: ["ODS","KDUCSL","TOP09"] }
-PIR: { name: "Pirates", coalition: false }
-STAN: { name: "STAN", coalition: false }
-CSSD: { name: "ČSSD", coalition: false }
-ODS: { name: "ODS", coalition: false }
-KDUCSL: { name: "KDU-ČSL", coalition: false }
-TOP09: { name: "TOP 09", coalition: false }
+# 2025 Czech Parliamentary Elections - Party Configuration
+# Party codes from live XML feed (KSTRANA values)
+
+"22": { name: "ANO 2011", coalition: false, color: "#261060" }
+"11": { name: "SPOLU", coalition: true, members: ["ODS","KDUCSL","TOP09"], color: "#0050AA" }
+"6": { name: "SPD", coalition: false, color: "#8B0000" }
+"23": { name: "STAN", coalition: false, color: "#68BC45" }
+"16": { name: "Piráti", coalition: false, color: "#000000" }
+"25": { name: "Stačilo!", coalition: false, color: "#CC0000" }
+"20": { name: "Motoristé sobě", coalition: false, color: "#FF8C00" }
+"8": { name: "PŘÍSAHA", coalition: false, color: "#1E90FF" }
+"7": { name: "ČSSD", coalition: false, color: "#EC5800" }

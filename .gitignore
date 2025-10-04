@@ -134,8 +134,9 @@ dmypy.json
 ehthumbs.db
 Thumbs.db
 
-# Streamlit
-.streamlit/
+# Streamlit (allow config.toml, ignore secrets)
+.streamlit/*
+!.streamlit/config.toml
 
 # Demo outputs
 *.log
