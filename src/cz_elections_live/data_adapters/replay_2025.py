@@ -26,7 +26,7 @@ PARTY_CODE_MAP = {
 @dataclass
 class ReplayConfig:
     """Configuration for 2025 replay mode."""
-    duration_minutes: float = 180.0  # 3 hours to simulate full count
+    duration_minutes: float = 10.0  # 10 minutes for fast testing (1% per 6 seconds)
     noise_factor: float = 0.03  # 3% random noise
 
 
@@ -125,9 +125,10 @@ class Replay2025Simulator:
         Determine which regions have reported at given progress.
 
         Realistic counting order:
-        - Rural areas first (0-30%)
-        - Medium cities (30-70%)
-        - Prague last (70-100%)
+        - Rural areas first (0-20%)
+        - Medium cities (20-60%)
+        - Prague last (60-100%)
+        - Other regions gradually fill in
         """
         all_regions = self.region_data["region_code"].unique().tolist()
 
@@ -137,20 +138,22 @@ class Replay2025Simulator:
 
         reported_regions = []
 
-        if progress >= 0.1:
+        # Start showing data immediately
+        if progress >= 0.02:  # At 2% (~12 seconds with 10min duration)
             reported_regions.extend(rural_regions)
 
-        if progress >= 0.4:
+        if progress >= 0.25:  # At 25%
             reported_regions.extend(medium_cities)
 
-        if progress >= 0.7:
+        if progress >= 0.60:  # At 60%
             reported_regions.extend(prague)
 
-        # Add randomness for other regions
-        if progress > 0.3:
+        # Add randomness for other regions (start earlier)
+        if progress > 0.15:
             for region in all_regions:
                 if region not in reported_regions:
-                    if random.random() < (progress - 0.3) * 1.5:
+                    # More aggressive progression
+                    if random.random() < (progress - 0.15) * 2.0:
                         reported_regions.append(region)
 
         return reported_regions
@@ -168,8 +171,9 @@ class Replay2025Simulator:
         return df
 
     def _generate_initial_snapshot(self) -> pd.DataFrame:
-        """Generate initial snapshot (very few votes)."""
-        rural_regions = ["CZ0311", "CZ0312"]
+        """Generate initial snapshot (first few regions reporting)."""
+        # Start with more regions so we have visible data immediately
+        rural_regions = ["CZ0311", "CZ0312", "CZ0321"]
 
         initial_data = (
             self.region_data[self.region_data["region_code"].isin(rural_regions)]
@@ -220,7 +224,7 @@ class Replay2025Simulator:
         }
 
 
-def create_replay_simulator(duration_minutes: float = 180.0) -> Replay2025Simulator:
+def create_replay_simulator(duration_minutes: float = 10.0) -> Replay2025Simulator:
     """
     Create a 2025 replay simulator.
 
