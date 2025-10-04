@@ -39,7 +39,13 @@ def run_batch_loops(root="data/archive/batches", index_dir="data/index"):
         logger.debug(f"Checking batch {nn}")
         progressed = False
 
-        for kind in ("okrsky","obce","okresy"):
+        for i, kind in enumerate(("okrsky","obce","okresy")):
+            # Add delay between requests to avoid overwhelming the server
+            if i > 0:
+                delay = int(os.getenv("CAPTURE_BATCH_DELAY", "1"))  # Configurable delay between batch requests
+                logger.debug(f"Rate limiting: waiting {delay}s before next batch request")
+                time.sleep(delay)
+                
             url = BATCHES[kind].format(nn=nn)
             try:
                 logger.debug(f"Fetching {kind} batch {nn} from {url}")

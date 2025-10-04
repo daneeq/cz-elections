@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, time, pandas as pd
+import os, time, pandas as pd, requests
 from .utils import http_get, store_blob
 from cz_elections_live.utils.logging import get_logger
 
@@ -24,8 +24,14 @@ def run_stateful_loop(root="data/archive/stateful", index_dir="data/index"):
         start = time.time()
         logger.debug("Starting new capture cycle")
         
-        for name, url in STATEFUL_FEEDS.items():
+        for i, (name, url) in enumerate(STATEFUL_FEEDS.items()):
             try:
+                # Add delay between requests to avoid overwhelming the server
+                if i > 0:
+                    delay = int(os.getenv("CAPTURE_STATEFUL_DELAY", "2"))  # Configurable delay between requests
+                    logger.debug(f"Rate limiting: waiting {delay}s before next request")
+                    time.sleep(delay)
+                
                 logger.debug(f"Fetching {name} from {url}")
                 raw = http_get(url)
                 ts = pd.Timestamp.utcnow().strftime("%Y%m%dT%H%M%SZ")
@@ -43,10 +49,28 @@ def run_stateful_loop(root="data/archive/stateful", index_dir="data/index"):
                     "local_path": saved.local_path, "s3_key": saved.s3_key,
                     "size": saved.size, "sha1": saved.sha1, "fetched_at": saved.fetched_at
                 })
-            except Exception as e:
-                logger.error(f"Failed to capture {name}: {e}")
+            except requests.exceptions.ConnectionError as e:
+                logger.error(f"Connection error capturing {name}: {e}")
                 idx_rows.append({
-                    "kind":"stateful", "name": name, "error": str(e),
+                    "kind":"stateful", "name": name, "error": f"ConnectionError: {str(e)}",
+                    "ts": pd.Timestamp.utcnow().isoformat()
+                })
+            except requests.exceptions.Timeout as e:
+                logger.error(f"Timeout error capturing {name}: {e}")
+                idx_rows.append({
+                    "kind":"stateful", "name": name, "error": f"Timeout: {str(e)}",
+                    "ts": pd.Timestamp.utcnow().isoformat()
+                })
+            except requests.exceptions.HTTPError as e:
+                logger.error(f"HTTP error capturing {name}: {e}")
+                idx_rows.append({
+                    "kind":"stateful", "name": name, "error": f"HTTPError: {str(e)}",
+                    "ts": pd.Timestamp.utcnow().isoformat()
+                })
+            except Exception as e:
+                logger.error(f"Unexpected error capturing {name}: {e}")
+                idx_rows.append({
+                    "kind":"stateful", "name": name, "error": f"Unexpected: {str(e)}",
                     "ts": pd.Timestamp.utcnow().isoformat()
                 })
         
