@@ -109,11 +109,17 @@ def main():
 
     # Filter to selected parties (if filter enabled)
     if selected_parties is not None and not df_partial.empty:
-        # Make absolutely sure we have a clean index before filtering
-        df_partial = df_partial.reset_index(drop=True)
-        # Use .loc for safer filtering
-        mask = df_partial["party_code"].isin(selected_parties)
-        df_partial = df_partial.loc[mask].reset_index(drop=True)
+        # Use simple boolean indexing - avoid .loc with potentially corrupted index
+        try:
+            df_partial = df_partial[df_partial["party_code"].isin(selected_parties)].copy()
+            df_partial = df_partial.reset_index(drop=True)
+        except Exception as e:
+            st.error(f"Error filtering parties: {e}")
+            st.write(f"DataFrame shape: {df_partial.shape}")
+            st.write(f"Columns: {df_partial.columns.tolist()}")
+            st.write(f"Party codes: {df_partial['party_code'].tolist() if 'party_code' in df_partial.columns else 'N/A'}")
+            # Fall back to showing all data
+            df_partial = df_partial.reset_index(drop=True)
 
     # Show progress info for incremental and replay modes
     if DATA_MODE == "ps2025_replay" and "replay_simulator" in st.session_state:
