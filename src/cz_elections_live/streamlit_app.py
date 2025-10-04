@@ -47,8 +47,8 @@ def main():
             selected_parties = None  # No filter for 2021 incremental
 
         if DATA_MODE == "ps2025_replay":
-            duration = st.slider("Replay Duration (minutes)", 5, 60, 10, 5)
-            st.caption(f"⚡ ~{duration*0.6:.0f} seconds per 1% progress")
+            duration = st.slider("Replay Duration (minutes)", 1, 10, 3, 1)
+            st.caption(f"⚡ ~{duration*0.6:.1f} seconds per 1% progress")
             if st.button("Start New Replay"):
                 st.session_state.replay_simulator = create_replay_simulator(duration_minutes=duration)
                 st.session_state.replay_simulator.reset_simulation()
@@ -80,7 +80,7 @@ def main():
             return fetch_current_totals()
         elif DATA_MODE == "ps2025_replay":
             if "replay_simulator" not in st.session_state:
-                st.session_state.replay_simulator = create_replay_simulator(duration_minutes=10)
+                st.session_state.replay_simulator = create_replay_simulator(duration_minutes=3)
                 st.session_state.replay_simulator.start_simulation()
             return st.session_state.replay_simulator.get_current_partial()
         elif DATA_MODE == "ps2021_incremental":

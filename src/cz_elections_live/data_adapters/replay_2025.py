@@ -26,7 +26,7 @@ PARTY_CODE_MAP = {
 @dataclass
 class ReplayConfig:
     """Configuration for 2025 replay mode."""
-    duration_minutes: float = 10.0  # 10 minutes for fast testing (1% per 6 seconds)
+    duration_minutes: float = 3.0  # 3 minutes for fast testing (1% per 1.8 seconds)
     noise_factor: float = 0.03  # 3% random noise
 
 
@@ -224,7 +224,7 @@ class Replay2025Simulator:
         }
 
 
-def create_replay_simulator(duration_minutes: float = 10.0) -> Replay2025Simulator:
+def create_replay_simulator(duration_minutes: float = 3.0) -> Replay2025Simulator:
     """
     Create a 2025 replay simulator.
 
