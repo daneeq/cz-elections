@@ -107,6 +107,9 @@ class Replay2025Simulator:
             .rename(columns={"votes": "votes_reported", "party_code_2025": "party_code"})
         )
 
+        # Safety: ensure no duplicates after groupby
+        partial_data = partial_data.drop_duplicates(subset=["party_code"], keep="first")
+
         # Add party names
         party_names = self.target_data.set_index("party_code_2025")["party_name"].to_dict()
         partial_data["party_name"] = partial_data["party_code"].map(party_names)
@@ -118,7 +121,11 @@ class Replay2025Simulator:
         total = partial_data["votes_reported"].sum()
         partial_data["pct_reported"] = (partial_data["votes_reported"] / max(total, 1)) * 100.0
 
-        return partial_data[["party_code", "party_name", "votes_reported", "pct_reported"]]
+        # Final safety check before returning
+        result = partial_data[["party_code", "party_name", "votes_reported", "pct_reported"]]
+        result = result.drop_duplicates(subset=["party_code"], keep="first").reset_index(drop=True)
+
+        return result
 
     def _get_regions_at_progress(self, progress: float) -> list:
         """
@@ -188,7 +195,11 @@ class Replay2025Simulator:
         total = initial_data["votes_reported"].sum()
         initial_data["pct_reported"] = (initial_data["votes_reported"] / max(total, 1)) * 100.0
 
-        return initial_data[["party_code", "party_name", "votes_reported", "pct_reported"]]
+        result = initial_data[["party_code", "party_name", "votes_reported", "pct_reported"]]
+        # Ensure no duplicates
+        result = result.drop_duplicates(subset=["party_code"], keep="first").reset_index(drop=True)
+
+        return result
 
     def _generate_final_results(self) -> pd.DataFrame:
         """Generate final results (close to 2021 actual)."""
@@ -204,7 +215,11 @@ class Replay2025Simulator:
         total = df["votes_reported"].sum()
         df["pct_reported"] = (df["votes_reported"] / total) * 100.0
 
-        return df[["party_code", "party_name", "votes_reported", "pct_reported"]]
+        result = df[["party_code", "party_name", "votes_reported", "pct_reported"]]
+        # Ensure no duplicates
+        result = result.drop_duplicates(subset=["party_code"], keep="first").reset_index(drop=True)
+
+        return result
 
     def get_progress_info(self) -> Dict[str, float]:
         """Get current progress information."""
