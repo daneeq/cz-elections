@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 from cz_elections_live.data_adapters.ps2021_fixture import load_fixture_snapshot
 from cz_elections_live.data_adapters.volby2025 import fetch_current_totals
 from cz_elections_live.data_adapters.incremental_2021 import create_simulator
+from cz_elections_live.data_adapters.replay_2025 import create_replay_simulator
 from cz_elections_live.model.monte_carlo import simulate_outcomes
 from cz_elections_live.model.seats import allocate_seats_dhondt_regional
 from cz_elections_live.settings import CACHE_TTL, DATA_MODE, MAJORITY, THRESHOLDS
@@ -18,9 +19,15 @@ def main():
     st.set_page_config(page_title="CZ 2025 Live Forecast", layout="wide")
     st.title("Czech Parliamentary Elections — Live Coalition Odds")
 
+    # Load configs early
+    with open("config/coalitions.yaml") as f:
+        COALS = yaml.safe_load(f)["coalitions"]
+    with open("config/parties.yaml") as f:
+        PARTIES_CONFIG = yaml.safe_load(f)
+
     with st.sidebar:
         sims = st.slider("Simulations", 1000, 20000, 5000, 1000)
-        
+
         # Show performance recommendations
         if sims <= 3000:
             st.success("🚀 Fast updates (~1-2s)")
@@ -28,8 +35,28 @@ def main():
             st.info("⚡ Medium speed (~3-5s)")
         else:
             st.warning("🐌 Slower updates (~5-10s)")
-        
-        if DATA_MODE == "ps2021_incremental":
+
+        # Party filter (only for live/2025 modes with numeric codes)
+        if DATA_MODE in ["ps2025_live", "ps2021_fixture", "ps2025_replay"]:
+            st.markdown("### Party Filter")
+            major_parties = ["22", "11", "6", "23", "16", "25", "20"]  # ANO, SPOLU, SPD, STAN, Pirates, Stačilo, Motoristé
+
+            show_all = st.checkbox("Show all parties", value=False)
+            selected_parties = list(PARTIES_CONFIG.keys()) if show_all else major_parties
+        else:
+            selected_parties = None  # No filter for 2021 incremental
+
+        if DATA_MODE == "ps2025_replay":
+            duration = st.slider("Replay Duration (minutes)", 30, 300, 180, 30)
+            if st.button("Start New Replay"):
+                st.session_state.replay_simulator = create_replay_simulator(duration_minutes=duration)
+                st.session_state.replay_simulator.reset_simulation()
+                st.session_state.replay_simulator.start_simulation()
+                st.session_state.historical_data = []
+                st.session_state.start_time = datetime.now()
+                st.cache_data.clear()
+                st.rerun()
+        elif DATA_MODE == "ps2021_incremental":
             duration = st.slider("Simulation Duration (minutes)", 1, 10, 2, 1)
             if st.button("Start New Simulation"):
                 st.session_state.simulator = create_simulator(duration_minutes=duration)
@@ -43,13 +70,18 @@ def main():
             profile = st.selectbox(
                 "Fixture profile (2021)", ["urban_late_55", "rural_first_30", "balanced_70"]
             )
-            
+
         if st.button("Refresh"):
             st.cache_data.clear()
 
     def get_partial():
         if DATA_MODE == "ps2025_live":
             return fetch_current_totals()
+        elif DATA_MODE == "ps2025_replay":
+            if "replay_simulator" not in st.session_state:
+                st.session_state.replay_simulator = create_replay_simulator(duration_minutes=180)
+                st.session_state.replay_simulator.start_simulation()
+            return st.session_state.replay_simulator.get_current_partial()
         elif DATA_MODE == "ps2021_incremental":
             if "simulator" not in st.session_state:
                 st.session_state.simulator = create_simulator(duration_minutes=2)
@@ -59,9 +91,29 @@ def main():
             return load_fixture_snapshot(progress=profile)
 
     df_partial = get_partial()
-    
-    # Show progress info for incremental mode
-    if DATA_MODE == "ps2021_incremental" and "simulator" in st.session_state:
+
+    # Filter to selected parties (if filter enabled)
+    if selected_parties is not None:
+        df_partial = df_partial[df_partial["party_code"].isin(selected_parties)]
+
+    # Show progress info for incremental and replay modes
+    if DATA_MODE == "ps2025_replay" and "replay_simulator" in st.session_state:
+        progress_info = st.session_state.replay_simulator.get_progress_info()
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Progress", f"{progress_info['progress']:.1%}")
+        with col2:
+            st.metric("Elapsed", f"{progress_info['elapsed_minutes']:.1f} min")
+        with col3:
+            st.metric("Remaining", f"{progress_info['remaining_minutes']:.1f} min")
+
+        st.progress(progress_info['progress'])
+
+        if progress_info['is_complete']:
+            st.success("🎉 Replay Complete! Results have converged to 2021 final results (with 2025 party codes).")
+
+    elif DATA_MODE == "ps2021_incremental" and "simulator" in st.session_state:
         progress_info = st.session_state.simulator.get_progress_info()
         
         col1, col2, col3 = st.columns(3)
@@ -89,12 +141,6 @@ def main():
     st.dataframe(
         df_partial.sort_values("votes_reported", ascending=False), use_container_width=True
     )
-
-    with open("config/coalitions.yaml") as f:
-        COALS = yaml.safe_load(f)["coalitions"]
-
-    with open("config/parties.yaml") as f:
-        PARTIES_CONFIG = yaml.safe_load(f)
 
     # Show simulation info for incremental mode
     if DATA_MODE == "ps2021_incremental" and "simulator" in st.session_state:
@@ -231,19 +277,34 @@ def main():
     coalition_df = pd.DataFrame(rows).sort_values("P(≥101)", ascending=False)
     st.dataframe(coalition_df, use_container_width=True, hide_index=True)
     
-    # Store historical data for evolution charts (only in incremental mode)
-    if DATA_MODE == "ps2021_incremental" and "simulator" in st.session_state:
-        progress_info = st.session_state.simulator.get_progress_info()
-        
+    # Store historical data for evolution charts (incremental, replay, and live modes)
+    if DATA_MODE in ["ps2021_incremental", "ps2025_live", "ps2025_replay"]:
         # Initialize historical data storage
         if "historical_data" not in st.session_state:
             st.session_state.historical_data = []
-        
-        # Add current data point
-        current_time = progress_info['elapsed_minutes']
+
+        # Get timestamp for tracking
+        if DATA_MODE == "ps2021_incremental" and "simulator" in st.session_state:
+            progress_info = st.session_state.simulator.get_progress_info()
+            current_time = progress_info['elapsed_minutes']
+            progress = progress_info['progress']
+        elif DATA_MODE == "ps2025_replay" and "replay_simulator" in st.session_state:
+            progress_info = st.session_state.replay_simulator.get_progress_info()
+            current_time = progress_info['elapsed_minutes']
+            progress = progress_info['progress']
+        else:
+            # For live mode, use actual clock time
+            if "start_time" not in st.session_state:
+                st.session_state.start_time = datetime.now()
+            elapsed = (datetime.now() - st.session_state.start_time).total_seconds() / 60
+            current_time = elapsed
+            total_votes = df_partial["votes_reported"].sum()
+            # Estimate progress (assume ~5M total votes based on 2021)
+            progress = min(total_votes / 5_000_000, 1.0) if total_votes > 0 else 0.0
+
         data_point = {
             "time": current_time,
-            "progress": progress_info['progress']
+            "progress": progress
         }
         
         # Add coalition data
@@ -257,10 +318,10 @@ def main():
             data_point[f"{coalition_name}_exp_seats"] = float(exp_seats_str)
         
         st.session_state.historical_data.append(data_point)
-        
+
         # Create evolution charts for top 3 coalitions
         if len(st.session_state.historical_data) > 1:
-            st.subheader("📈 Coalition Evolution")
+            st.subheader("📈 Coalition Evolution Over Time")
             
             # Convert to DataFrame for plotting
             hist_df = pd.DataFrame(st.session_state.historical_data)
@@ -336,8 +397,23 @@ def main():
 
     st.caption("Mode: " + DATA_MODE)
 
-    # Auto-refresh for incremental and live modes
-    if DATA_MODE == "ps2021_incremental" and "simulator" in st.session_state:
+    # Auto-refresh for incremental, replay, and live modes
+    if DATA_MODE == "ps2025_replay" and "replay_simulator" in st.session_state:
+        progress_info = st.session_state.replay_simulator.get_progress_info()
+        if not progress_info['is_complete']:
+            base_interval = 5.0
+            sim_factor = max(1.0, sims / 10000)
+            calc_factor = max(1.0, calc_time * 0.5)
+
+            refresh_interval = base_interval * sim_factor * calc_factor
+            refresh_interval = min(refresh_interval, 15.0)
+
+            st.caption(f"🔄 Auto-refreshing every {refresh_interval:.1f} seconds (replaying 2021 with 2025 codes)...")
+
+            time.sleep(refresh_interval)
+            st.rerun()
+
+    elif DATA_MODE == "ps2021_incremental" and "simulator" in st.session_state:
         progress_info = st.session_state.simulator.get_progress_info()
         if not progress_info['is_complete']:
             # Calculate refresh interval based on simulation count and calculation time
