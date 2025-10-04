@@ -93,14 +93,27 @@ def main():
 
     df_partial = get_partial()
 
-    # Ensure no duplicate party codes (safety check)
+    # Comprehensive cleanup of DataFrame to prevent any index/duplicate issues
     if not df_partial.empty and "party_code" in df_partial.columns:
-        df_partial = df_partial.drop_duplicates(subset=["party_code"], keep="first")
+        # First, completely reset the index to avoid any index-related issues
         df_partial = df_partial.reset_index(drop=True)
 
+        # Check for duplicate party codes and log them
+        duplicates = df_partial[df_partial.duplicated(subset=["party_code"], keep=False)]
+        if not duplicates.empty:
+            st.warning(f"⚠️ Found duplicate party codes: {duplicates['party_code'].unique().tolist()}")
+            # Keep first occurrence of each party
+            df_partial = df_partial.drop_duplicates(subset=["party_code"], keep="first")
+            # Reset index again after dropping duplicates
+            df_partial = df_partial.reset_index(drop=True)
+
     # Filter to selected parties (if filter enabled)
-    if selected_parties is not None:
-        df_partial = df_partial[df_partial["party_code"].isin(selected_parties)]
+    if selected_parties is not None and not df_partial.empty:
+        # Make absolutely sure we have a clean index before filtering
+        df_partial = df_partial.reset_index(drop=True)
+        # Use .loc for safer filtering
+        mask = df_partial["party_code"].isin(selected_parties)
+        df_partial = df_partial.loc[mask].reset_index(drop=True)
 
     # Show progress info for incremental and replay modes
     if DATA_MODE == "ps2025_replay" and "replay_simulator" in st.session_state:
