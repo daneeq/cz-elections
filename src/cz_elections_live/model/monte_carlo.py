@@ -35,15 +35,29 @@ def simulate_outcomes(
     parties = partial["party_code"].tolist()
     votes = partial["votes_reported"].to_numpy(dtype=float)
     counted = float(votes.sum())
+
+    # Handle edge case: no votes yet (polls not open)
+    if counted == 0 or np.all(votes == 0):
+        # Return zero seats for everyone
+        seats_matrix = np.zeros((n_sims, len(parties)), dtype=int)
+        return SimulationResult(parties, seats_matrix)
+
     est_total = int(counted * est_total_factor)  # replace with live progress as available
     remaining = max(0, est_total - int(counted))
-    probs = votes / max(counted, 1.0)
+    probs = votes / counted
+
+    # Ensure probs are valid (no NaN, sum to 1)
+    probs = np.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
+    if probs.sum() > 0:
+        probs = probs / probs.sum()  # Normalize to sum to 1
+    else:
+        probs = np.ones(len(parties)) / len(parties)  # Equal probabilities if all zero
 
     seats_matrix = np.zeros((n_sims, len(parties)), dtype=int)
     for k in range(n_sims):
         add = dirichlet_multinomial_draw(remaining, probs)
         final_votes = votes + add
-        pct = final_votes / final_votes.sum()
+        pct = final_votes / max(final_votes.sum(), 1.0)
         eligible_mask = pct >= thresholds["single"]  # simple single-party case
         seats = seat_allocator(parties, final_votes, eligible_mask)
         seats_matrix[k, :] = [seats.get(p, 0) for p in parties]

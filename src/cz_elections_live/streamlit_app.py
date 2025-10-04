@@ -84,6 +84,8 @@ def main():
             "No data yet. In fixture mode, ensure data/raw CSVs exist. "
             "In live mode, wait for first XML."
         )
+    elif df_partial["votes_reported"].sum() == 0:
+        st.warning("⏳ Waiting for votes to be counted... Polls may not have opened yet.")
     st.dataframe(
         df_partial.sort_values("votes_reported", ascending=False), use_container_width=True
     )
