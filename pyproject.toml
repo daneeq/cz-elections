@@ -16,6 +16,8 @@ lxml = "^5.2.0"
 python-dotenv = "^1.0.0"
 requests = "^2.32.0"
 plotly = "^5.17.0"
+boto3 = "^1.40.45"
+
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
@@ -27,6 +29,7 @@ types-requests = "^2.32.0.20240914"
 
 [tool.poetry.scripts]
 cz-live = "cz_elections_live.streamlit_app:main_cli"
+capture = "src.capture.runner:main"
 
 [tool.black]
 line-length = 100

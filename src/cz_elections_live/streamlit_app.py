@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import yaml
 import time
+import numpy as np
 from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
@@ -17,13 +18,20 @@ from cz_elections_live.settings import CACHE_TTL, DATA_MODE, MAJORITY, THRESHOLD
 
 def main():
     st.set_page_config(page_title="CZ 2025 Live Forecast", layout="wide")
-    st.title("Czech Parliamentary Elections — Live Coalition Odds")
-
+    
     # Load configs early
     with open("config/coalitions.yaml") as f:
         COALS = yaml.safe_load(f)["coalitions"]
     with open("config/parties.yaml") as f:
         PARTIES_CONFIG = yaml.safe_load(f)
+    
+    # Dashboard Header
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h1 style="color: #1f4e79; margin-bottom: 0.5rem;">🇨🇿 Czech Parliamentary Elections 2025</h1>
+        <h2 style="color: #666; font-weight: normal; margin-top: 0;">Live Coalition Forecast Dashboard</h2>
+    </div>
+    """, unsafe_allow_html=True)
 
     with st.sidebar:
         sims = st.slider("Simulations", 1000, 20000, 5000, 1000)
@@ -39,7 +47,7 @@ def main():
         # Party filter (only for live/2025 modes with numeric codes)
         if DATA_MODE in ["ps2025_live", "ps2021_fixture", "ps2025_replay"]:
             st.markdown("### Party Filter")
-            major_parties = ["22", "11", "6", "23", "16", "25", "20"]  # ANO, SPOLU, SPD, STAN, Pirates, Stačilo, Motoristé
+            major_parties = ["22", "11", "6", "23", "16", "25", "20", "8", "7"]  # ANO, SPOLU, SPD, STAN, Pirates, Stačilo, Motoristé, PŘÍSAHA, ČSSD
 
             show_all = st.checkbox("Show all parties", value=False)
             selected_parties = list(PARTIES_CONFIG.keys()) if show_all else major_parties
@@ -243,7 +251,59 @@ def main():
                 ", ".join([f"{row['party_name']} ({row['pct_reported']:.1f}%, {row['threshold_prob']:.0f}% chance)"
                           for _, row in near_threshold.iterrows()]))
 
-    # Visualizations
+    
+    # Calculate coalition odds
+    rows = []
+    for c in COALS:
+        p, exp = sim_result.coalition_stats(c["parties"], majority=MAJORITY)
+        rows.append({"Coalition": c["name"], "P(≥101)": f"{p:.1%}", "Exp seats": f"{exp:.1f}"})
+    coalition_df = pd.DataFrame(rows).sort_values("P(≥101)", ascending=False)
+    
+    # DASHBOARD OVERVIEW SECTION
+    st.markdown("---")
+    st.markdown("## 📊 Dashboard Overview")
+    
+    # Key metrics row
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        # Most likely coalition
+        top_coalition = coalition_df.iloc[0]
+        st.metric(
+            label="Most Likely Coalition",
+            value=top_coalition["Coalition"],
+            delta=f"{top_coalition['P(≥101)']} chance"
+        )
+    
+    with col2:
+        # Total votes reported
+        total_votes = df_partial["votes_reported"].sum()
+        st.metric(
+            label="Votes Reported",
+            value=f"{total_votes:,}",
+            delta=f"{progress*100:.1f}%" if DATA_MODE in ["ps2021_incremental", "ps2025_replay"] else "Live"
+        )
+    
+    with col3:
+        # Number of parties above threshold
+        above_threshold = len(df_partial_with_seats[df_partial_with_seats["pct_reported"] >= 5])
+        st.metric(
+            label="Parties Above 5%",
+            value=above_threshold,
+            delta=f"of {len(df_partial)} total"
+        )
+    
+    with col4:
+        # Simulation info
+        st.metric(
+            label="Monte Carlo Sims",
+            value=f"{sims:,}",
+            delta=f"{calc_time:.1f}s"
+        )
+    
+    # HORIZONTAL HISTOGRAMS AT THE TOP
+    st.markdown("### 📈 Seat & Vote Projections")
+    
     col1, col2 = st.columns(2)
 
     with col1:
@@ -293,13 +353,114 @@ def main():
                            annotation_text="5% threshold", annotation_position="top")
         st.plotly_chart(fig_votes, use_container_width=True)
     
-    # Calculate coalition odds
-    rows = []
-    for c in COALS:
-        p, exp = sim_result.coalition_stats(c["parties"], majority=MAJORITY)
-        rows.append({"Coalition": c["name"], "P(≥101)": f"{p:.1%}", "Exp seats": f"{exp:.1f}"})
-    st.subheader("Coalition majority odds")
-    coalition_df = pd.DataFrame(rows).sort_values("P(≥101)", ascending=False)
+    # WAFFLE CHART FOR 200 SEATS
+    st.markdown("### 🏛️ Parliament Composition (200 Seats)")
+    
+    # Create auditorium-style waffle chart
+    def create_auditorium_waffle(seats_data, max_seats=200):
+        # Sort parties by projected seats
+        sorted_parties = seats_data.sort_values("Proj. Seats", ascending=False)
+        
+        # Create curved auditorium layout (semicircle with rows)
+        fig = go.Figure()
+        
+        colors_map = {party: PARTIES_CONFIG.get(party, {}).get("color", "#808080")
+                     for party in df_partial_with_seats["party_code"]}
+        
+        # Calculate seat positions in curved layout
+        total_rows = 12  # Approximate rows for 200 seats
+        seats_per_row = [16, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 16]  # Curved distribution
+        
+        seat_count = 0
+        seat_positions = []
+        seat_colors = []
+        seat_labels = []
+        
+        for party_code, row in sorted_parties.iterrows():
+            party_name = row["Name"]
+            projected_seats = int(row["Proj. Seats"])
+            color = colors_map.get(party_code, "#808080")
+            
+            for _ in range(projected_seats):
+                if seat_count >= max_seats:
+                    break
+                    
+                # Find which row this seat belongs to
+                current_row = 0
+                seats_in_current_row = 0
+                for row_idx, seats_in_row in enumerate(seats_per_row):
+                    if seats_in_current_row + seats_in_row > seat_count:
+                        current_row = row_idx
+                        break
+                    seats_in_current_row += seats_in_row
+                
+                # Calculate position within row
+                pos_in_row = seat_count - seats_in_current_row
+                seats_in_row = seats_per_row[current_row]
+                
+                # Curved positioning
+                angle = (pos_in_row - seats_in_row/2) * (180 / seats_in_row) * (3.14159 / 180)
+                radius = 10 + current_row * 2
+                x = radius * np.cos(angle)
+                y = radius * np.sin(angle)
+                
+                seat_positions.append((x, y))
+                seat_colors.append(color)
+                seat_labels.append(party_name)
+                seat_count += 1
+        
+        # Add seat markers
+        if seat_positions:
+            x_coords, y_coords = zip(*seat_positions)
+            
+            fig.add_trace(go.Scatter(
+                x=x_coords,
+                y=y_coords,
+                mode='markers',
+                marker=dict(
+                    size=12,
+                    color=seat_colors,
+                    line=dict(width=2, color='white'),
+                    symbol='square'
+                ),
+                text=seat_labels,
+                hovertemplate='<b>%{text}</b><br>Seat: %{pointIndex}<extra></extra>',
+                showlegend=False
+            ))
+        
+        # Add majority line (101 seats)
+        fig.add_shape(
+            type="line",
+            x0=-12, x1=12,
+            y0=-12, y1=-12,
+            line=dict(color="red", width=3, dash="dash"),
+            annotation_text="Majority Line (101 seats)",
+            annotation_position="bottom right"
+        )
+        
+        fig.update_layout(
+            title="Parliament Auditorium Layout",
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            height=500,
+            showlegend=True,
+            plot_bgcolor='white'
+        )
+        
+        return fig
+    
+    # Create and display waffle chart
+    try:
+        waffle_fig = create_auditorium_waffle(display_df)
+        st.plotly_chart(waffle_fig, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Could not create auditorium chart: {e}")
+        # Fallback to simple waffle chart
+        st.info("📊 Auditorium chart coming soon - showing seat distribution instead")
+    
+    # COALITION TABLE
+    st.markdown("---")
+    st.markdown("## 🏛️ Coalition Majority Odds")
     st.dataframe(coalition_df, use_container_width=True, hide_index=True)
     
     # Store historical data for evolution charts (incremental, replay, and live modes)
@@ -346,7 +507,8 @@ def main():
 
         # Create evolution charts for top 3 coalitions
         if len(st.session_state.historical_data) > 1:
-            st.subheader("📈 Coalition Evolution Over Time")
+            st.markdown("---")
+            st.markdown("## 📈 Coalition Evolution Over Time")
             
             # Convert to DataFrame for plotting
             hist_df = pd.DataFrame(st.session_state.historical_data)
@@ -354,71 +516,85 @@ def main():
             # Get top 3 coalitions by current probability
             top_coalitions = coalition_df.head(3)["Coalition"].tolist()
             
-            col1, col2 = st.columns(2)
+            # Make charts full width and stacked for better readability
+            st.markdown("### Majority Probability Evolution")
+            fig_prob = go.Figure()
             
+            for coalition in top_coalitions:
+                if f"{coalition}_prob" in hist_df.columns:
+                    fig_prob.add_trace(go.Scatter(
+                        x=hist_df["time"],
+                        y=hist_df[f"{coalition}_prob"] * 100,
+                        mode='lines+markers',
+                        name=coalition,
+                        line=dict(width=3),
+                        marker=dict(size=6)
+                    ))
+            
+            fig_prob.update_layout(
+                xaxis_title="Time (minutes)",
+                yaxis_title="Probability (%)",
+                yaxis=dict(range=[0, 100]),
+                height=400,
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=10)
+                ),
+                margin=dict(t=50)
+            )
+            
+            st.plotly_chart(fig_prob, use_container_width=True)
+            
+            st.markdown("### Expected Seats Evolution")
+            fig_seats = go.Figure()
+            
+            for coalition in top_coalitions:
+                if f"{coalition}_exp_seats" in hist_df.columns:
+                    fig_seats.add_trace(go.Scatter(
+                        x=hist_df["time"],
+                        y=hist_df[f"{coalition}_exp_seats"],
+                        mode='lines+markers',
+                        name=coalition,
+                        line=dict(width=3),
+                        marker=dict(size=6)
+                    ))
+            
+            # Add majority line
+            fig_seats.add_hline(y=101, line_dash="dash", line_color="red", 
+                              annotation_text="Majority (101 seats)", annotation_position="top right")
+            
+            fig_seats.update_layout(
+                xaxis_title="Time (minutes)",
+                yaxis_title="Expected Seats",
+                yaxis=dict(range=[0, 200]),
+                height=400,
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=10)
+                ),
+                margin=dict(t=50)
+            )
+            
+            st.plotly_chart(fig_seats, use_container_width=True)
+            
+            # Show data points count and clear button in a row
+            col1, col2 = st.columns([3, 1])
             with col1:
-                st.markdown("**Majority Probability Evolution**")
-                fig_prob = go.Figure()
-                
-                for coalition in top_coalitions:
-                    if f"{coalition}_prob" in hist_df.columns:
-                        fig_prob.add_trace(go.Scatter(
-                            x=hist_df["time"],
-                            y=hist_df[f"{coalition}_prob"] * 100,
-                            mode='lines+markers',
-                            name=coalition,
-                            line=dict(width=3),
-                            marker=dict(size=6)
-                        ))
-                
-                fig_prob.update_layout(
-                    title="Probability of Reaching Majority (≥101 seats)",
-                    xaxis_title="Time (minutes)",
-                    yaxis_title="Probability (%)",
-                    yaxis=dict(range=[0, 100]),
-                    height=400,
-                    showlegend=True
-                )
-                
-                st.plotly_chart(fig_prob, use_container_width=True)
-            
+                st.caption(f"📊 Tracking {len(st.session_state.historical_data)} data points")
             with col2:
-                st.markdown("**Expected Seats Evolution**")
-                fig_seats = go.Figure()
-                
-                for coalition in top_coalitions:
-                    if f"{coalition}_exp_seats" in hist_df.columns:
-                        fig_seats.add_trace(go.Scatter(
-                            x=hist_df["time"],
-                            y=hist_df[f"{coalition}_exp_seats"],
-                            mode='lines+markers',
-                            name=coalition,
-                            line=dict(width=3),
-                            marker=dict(size=6)
-                        ))
-                
-                # Add majority line
-                fig_seats.add_hline(y=101, line_dash="dash", line_color="red", 
-                                  annotation_text="Majority (101 seats)", annotation_position="top right")
-                
-                fig_seats.update_layout(
-                    title="Expected Total Seats",
-                    xaxis_title="Time (minutes)",
-                    yaxis_title="Expected Seats",
-                    yaxis=dict(range=[0, 200]),
-                    height=400,
-                    showlegend=True
-                )
-                
-                st.plotly_chart(fig_seats, use_container_width=True)
-            
-            # Show data points count
-            st.caption(f"📊 Tracking {len(st.session_state.historical_data)} data points")
-            
-            # Add clear history button
-            if st.button("🗑️ Clear History", help="Clear the evolution charts history"):
-                st.session_state.historical_data = []
-                st.rerun()
+                if st.button("🗑️ Clear History", help="Clear the evolution charts history"):
+                    st.session_state.historical_data = []
+                    st.rerun()
 
     st.caption("Mode: " + DATA_MODE)
 

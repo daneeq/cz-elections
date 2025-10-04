@@ -1,0 +1,14 @@
+[Unit]
+Description=CZ Elections 2025 Capture
+After=network-online.target
+
+[Service]
+WorkingDirectory=/home/ubuntu/cz-elections-live
+Environment="PATH=/home/ubuntu/.local/bin:/usr/bin"
+ExecStart=/home/ubuntu/.local/bin/poetry run capture
+Restart=always
+RestartSec=5
+User=ubuntu
+
+[Install]
+WantedBy=multi-user.target
